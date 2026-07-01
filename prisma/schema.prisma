@@ -1,0 +1,178 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum LeaveRequestStatus {
+  PENDING_MANAGER
+  PENDING_ADMIN
+  APPROVED
+  REJECTED
+}
+
+model Company {
+  id        Int      @id @default(autoincrement())
+  name      String
+  logoUrl   String?
+  currency  String   @default("XOF")
+  planType  String   @default("go") // "go" or "full"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sites      Site[]
+  positions  Position[]
+  employees  Employee[]
+  profiles   Profile[]
+  leaveTypes LeaveType[]
+
+  @@map("companies")
+}
+
+model Site {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  name      String
+  address   String?
+  latitude  Float?
+  longitude Float?
+  managerId Int?     // Manager level 1 validator
+  qrCodeUrl String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  manager   Employee?  @relation("SiteManager", fields: [managerId], references: [id])
+  employees Employee[] @relation("EmployeeSite")
+
+  attendances Attendance[]
+
+  @@map("sites")
+}
+
+model Position {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  employees Employee[]
+
+  @@map("positions")
+}
+
+model Employee {
+  id         Int       @id @default(autoincrement())
+  companyId  Int
+  siteId     Int
+  positionId Int?
+  firstName  String
+  lastName   String
+  phone      String?
+  email      String?
+  birthDate  DateTime?
+  matricule  String    @unique
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  site     Site      @relation("EmployeeSite", fields: [siteId], references: [id])
+  position Position? @relation(fields: [positionId], references: [id])
+
+  attendances   Attendance[]
+  leaveRequests LeaveRequest[]
+  profiles      Profile[]
+  managedSites  Site[]         @relation("SiteManager")
+
+  @@map("employees")
+}
+
+model Profile {
+  id         String   @id // Matches auth.users UUID from Supabase
+  email      String   @unique
+  role       Role     @default(EMPLOYEE)
+  companyId  Int?
+  employeeId Int?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company  Company?  @relation(fields: [companyId], references: [id])
+  employee Employee? @relation(fields: [employeeId], references: [id])
+
+  @@map("profiles")
+}
+
+model Attendance {
+  id         Int            @id @default(autoincrement())
+  employeeId Int
+  siteId     Int
+  type       AttendanceType
+  timestamp  DateTime       @default(now())
+  latitude   Float?
+  longitude  Float?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  site     Site     @relation(fields: [siteId], references: [id])
+
+  @@map("attendances")
+}
+
+model LeaveType {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  leaveRequests LeaveRequest[]
+
+  @@map("leave_types")
+}
+
+model LeaveRequest {
+  id                 Int                @id @default(autoincrement())
+  employeeId         Int
+  leaveTypeId        Int
+  startDate          DateTime
+  endDate            DateTime
+  reason             String?
+  status             LeaveRequestStatus @default(PENDING_MANAGER)
+  managerId          Int?               // Who validated level 1
+  managerValidatedAt DateTime?
+  adminId            Int?               // Who validated level 2
+  adminValidatedAt   DateTime?
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  employee  Employee  @relation(fields: [employeeId], references: [id])
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@map("leave_requests")
+}
